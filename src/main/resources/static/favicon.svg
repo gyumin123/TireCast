@@ -1,0 +1,7 @@
+<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- TireCast logo-mark 파비콘 — 밝은 탭 배경에서도 보이도록 다크 서클 배경 추가 -->
+    <circle cx="24" cy="24" r="24" fill="#0b1220"/>
+    <circle cx="24" cy="24" r="17" stroke="#38bdf8" stroke-width="5"/>
+    <circle cx="24" cy="24" r="7.5" stroke="#f1f5f9" stroke-width="3" stroke-dasharray="4 4"/>
+    <path d="M12 15.5 Q17 10.5 24 10.5" stroke="#34d399" stroke-width="3" stroke-linecap="round"/>
+</svg>
