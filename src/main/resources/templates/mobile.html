@@ -94,10 +94,37 @@
     document.getElementById('cameraBtn').addEventListener('click', () => cameraInput.click());
     document.getElementById('galleryBtn').addEventListener('click', () => galleryInput.click());
 
-    function handleFile(file) {
+    // F-COL-01: 업로드 전 브라우저에서 이미지 리사이징 (긴 변 640px, Canvas API)
+    const RESIZE_MAX = 640;
+    function resizeImage(file) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                const scale = Math.min(1, RESIZE_MAX / Math.max(img.width, img.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(
+                    blob => blob ? resolve(blob) : reject(new Error('이미지 변환 실패')),
+                    'image/jpeg', 0.9);
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽을 수 없습니다')); };
+            img.src = url;
+        });
+    }
+
+    async function handleFile(file) {
         if (!file) return;
-        selectedFile = file;
-        previewImg.src = URL.createObjectURL(file);
+        try {
+            selectedFile = await resizeImage(file);
+        } catch (e) {
+            alert('이미지를 처리할 수 없습니다. 다른 사진을 선택해주세요.');
+            return;
+        }
+        previewImg.src = URL.createObjectURL(selectedFile);
         previewBox.classList.add('has-image');
         updateAnalyzeState();
     }
@@ -108,25 +135,29 @@
         analyzeBtn.disabled = !selectedFile;
     }
 
-    // HTML5 Geolocation API — 진입 즉시 위치 권한 요청
+    // F-COL-02: HTML5 Geolocation API — 권한 거부 시 기본값(서울)으로 폴백
+    const SEOUL = { lat: 37.5665, lon: 126.9780 };
+    function useFallbackLocation(reason) {
+        coords = { ...SEOUL, fallback: true };
+        sessionStorage.setItem('lastCoords', JSON.stringify(coords));
+        gpsChip.classList.add('fail');
+        gpsText.textContent = reason + ' 기본 위치(서울) 기준으로 진단합니다.';
+    }
     function requestLocation() {
         if (!navigator.geolocation) {
-            gpsChip.classList.add('fail');
-            gpsText.textContent = '이 브라우저는 위치 정보를 지원하지 않습니다.';
+            useFallbackLocation('이 브라우저는 위치 정보를 지원하지 않습니다.');
             return;
         }
         gpsText.textContent = '위치 권한 요청 중... 허용을 눌러주세요';
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                sessionStorage.setItem('lastCoords', JSON.stringify(coords));
                 gpsChip.classList.remove('fail');
                 gpsChip.classList.add('ok');
                 gpsText.textContent = `위치 확인 완료 (${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)})`;
             },
-            () => {
-                gpsChip.classList.add('fail');
-                gpsText.textContent = '위치 권한이 거부되었습니다. 날씨 연동 없이 진단만 진행됩니다.';
-            },
+            () => useFallbackLocation('위치 권한이 거부되었습니다.'),
             { enableHighAccuracy: true, timeout: 10000 }
         );
     }
@@ -152,29 +183,34 @@
         }, 1600);
 
         const formData = new FormData();
-        formData.append('image', selectedFile);
+        formData.append('image', selectedFile, 'tire.jpg');
         if (coords) {
             formData.append('latitude', coords.lat);
             formData.append('longitude', coords.lon);
         }
 
         try {
-            // 연동 API: POST /api/diagnosis/analyze (Spring → Flask YOLO 추론)
+            // F-ANA-01~03: POST /api/diagnosis/analyze (Spring → Flask YOLO → 날씨 융합)
             const res = await fetch('/api/diagnosis/analyze', { method: 'POST', body: formData });
             if (res.ok) {
                 const result = await res.json();
                 sessionStorage.setItem('lastDiagnosis', JSON.stringify(result));
+                clearInterval(phraseTimer);
+                location.href = '/dashboard';
+                return;
             }
-            // TODO: 백엔드 구현 전 데모 — 실패해도 대시보드로 이동
+            if (res.status === 401) {
+                clearInterval(phraseTimer);
+                location.href = '/';
+                return;
+            }
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.message || '진단에 실패했습니다. 잠시 후 다시 시도해주세요.');
         } catch (err) {
-            // TODO: 백엔드 구현 전 데모 — 네트워크 오류 무시
-        }
-
-        // 분석 연출 후 대시보드로 전환
-        setTimeout(() => {
             clearInterval(phraseTimer);
-            location.href = '/dashboard';
-        }, 2500);
+            loadingOverlay.classList.remove('show');
+            alert(err.message || '서버에 연결할 수 없습니다.');
+        }
     });
 </script>
 </body>

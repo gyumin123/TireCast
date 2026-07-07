@@ -99,27 +99,26 @@
         joinBtn.textContent = '가입 처리 중...';
 
         try {
-            // 연동 API: POST /api/auth/register (Spring Boot → SQLite 저장)
+            // F-USR-01: POST /api/auth/register (Spring Boot → SQLite 저장)
             const res = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, email, password })
             });
 
-            if (res.status === 409) {
-                showAlert('이미 사용 중인 이메일입니다.', 'error');
-                joinBtn.disabled = false;
-                joinBtn.textContent = '가입 완료';
+            if (res.ok) {
+                // 가입 성공 알림 후 로그인 화면으로 자동 리다이렉트
+                showAlert('가입이 완료되었습니다! 로그인 화면으로 이동합니다.', 'success');
+                setTimeout(() => { location.href = '/'; }, 1500);
                 return;
             }
-            // TODO: 백엔드 구현 전에는 성공 흐름으로 처리 — API 준비 완료 후 res.ok 검사로 교체
+            const body = await res.json().catch(() => ({}));
+            showAlert(body.message || '가입에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
         } catch (err) {
-            // TODO: 백엔드 구현 전 데모 — 네트워크 오류 무시하고 성공 흐름 진행
+            showAlert('서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요.', 'error');
         }
-
-        // 가입 성공 알림 후 로그인 화면으로 자동 리다이렉트
-        showAlert('가입이 완료되었습니다! 로그인 화면으로 이동합니다.', 'success');
-        setTimeout(() => { location.href = '/'; }, 1500);
+        joinBtn.disabled = false;
+        joinBtn.textContent = '가입 완료';
     });
 </script>
 </body>

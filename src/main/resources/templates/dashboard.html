@@ -24,9 +24,12 @@
             </svg>
             <span class="logo-text">Tire<em>Cast</em></span>
         </div>
-        <a th:href="@{/mobile}" class="btn btn-primary" style="padding: 12px 22px; text-decoration: none;">
-            📷 새로운 타이어 검사
-        </a>
+        <div style="display: flex; gap: 10px;">
+            <a th:href="@{/mobile}" class="btn btn-primary" style="padding: 12px 22px; text-decoration: none;">
+                📷 새로운 타이어 검사
+            </a>
+            <button type="button" class="btn btn-ghost" id="logoutBtn" style="padding: 12px 18px;">로그아웃</button>
+        </div>
     </header>
 
     <!-- 안전 인사이트 패널 -->
@@ -49,7 +52,7 @@
                 AI 진단 요약
             </h2>
             <div class="result-image-box" id="resultImageBox">
-                <!-- YOLO 분석 결과 이미지 (바운딩 박스 표시) — API 연동 전 데모 렌더링 -->
+                <!-- 진단 전 기본 상태 — 진단 결과가 있으면 JS가 YOLO 결과 이미지로 교체 -->
                 <svg class="tire-placeholder" viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
                     <rect width="400" height="300" fill="#16213a"/>
                     <circle cx="200" cy="150" r="115" fill="#0f172a" stroke="#334155" stroke-width="14"/>
@@ -58,9 +61,6 @@
                     <circle cx="200" cy="150" r="14" fill="#334155"/>
                     <path d="M120 90 L150 118 M280 90 L250 118 M120 210 L150 182 M280 210 L250 182" stroke="#475569" stroke-width="6" stroke-linecap="round"/>
                 </svg>
-                <div class="bbox" id="demoBbox" style="left: 22%; top: 18%; width: 26%; height: 24%;">
-                    <span class="bbox-label" id="demoBboxLabel">crack 0.87</span>
-                </div>
             </div>
             <div class="weather-row" id="weatherRow">
                 <span class="weather-icon" id="weatherIcon">🌧️</span>
@@ -147,73 +147,35 @@
         danger: { icon: '🚨', title: '위험 — 운행 자제 권고',   cls: 'danger' }
     };
 
-    // 데모 진단 결과 (POST /api/diagnosis/analyze 응답 형태 가정)
-    const DEMO_DIAGNOSIS = {
-        status: 'danger',
-        guide: '트레드 마모가 심한 상태에서 현재 지역에 강한 비가 내리고 있습니다. 수막현상 위험이 매우 높으므로 오늘은 대중교통 이용을 권장합니다. 빠른 시일 내 타이어 교체가 필요합니다.',
-        defects: [
-            { label: '트레드 마모 (tr)', confidence: 0.87 },
-            { label: '측면 크랙 (cut)', confidence: 0.64 }
-        ],
-        weather: {
-            location: '대구광역시 달서구',
-            description: '강한 비',
-            icon: '🌧️',
-            precipitation: 15.2,
-            temperature: 24.5
-        }
-    };
+    // F-USR-03: 로그아웃
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+        try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+        sessionStorage.clear();
+        location.href = '/';
+    });
 
-    // 데모 진단 이력 상세 템플릿 (상태별) — detail은 GET /api/diagnosis/history/{id} 응답 형태 가정
-    const DETAIL_TEMPLATES = {
-        safe: {
-            summary: '안전 — 결함 미탐지',
-            defects: [],
-            bboxes: [],
-            guide: '탐지된 결함이 없습니다. 타이어 상태가 양호하며 당시 기상 조건에서 안전하게 주행할 수 있는 상태였습니다.',
-            weather: { location: '대구광역시 달서구', description: '맑음', icon: '☀️', precipitation: 0, temperature: 26.4 }
-        },
-        warn: {
-            summary: '경고 — 측면 미세 크랙 1건',
-            defects: [{ label: '측면 크랙 (cut)', confidence: 0.58 }],
-            bboxes: [{ left: 58, top: 40, width: 20, height: 18, label: 'cut 0.58' }],
-            guide: '측면에 미세 크랙이 발견되었습니다. 당장 위험하지는 않지만 진행 상태를 주기적으로 확인하고, 고속 주행 전 점검을 권장합니다.',
-            weather: { location: '대구광역시 달서구', description: '흐림', icon: '☁️', precipitation: 0.4, temperature: 27.1 }
-        },
-        danger: {
-            summary: '위험 — 비드 손상·부풀음 탐지',
-            defects: [
-                { label: '비드 손상 (bead_damage)', confidence: 0.81 },
-                { label: '부풀음 (CBU)', confidence: 0.66 }
-            ],
-            bboxes: [
-                { left: 20, top: 55, width: 24, height: 22, label: 'bead_damage 0.81' },
-                { left: 60, top: 22, width: 18, height: 20, label: 'CBU 0.66' }
-            ],
-            guide: '비드 손상과 부풀음이 동시에 탐지되었습니다. 주행 중 파열 위험이 있어 즉시 정비소 방문이 필요했던 상태입니다.',
-            weather: { location: '대구광역시 달서구', description: '맑음', icon: '☀️', precipitation: 0, temperature: 26.0 }
-        }
-    };
+    /** YOLO 결과 이미지 + BBox 오버레이 렌더링 */
+    function renderResultImage(imageUrl, bboxes) {
+        const box = document.getElementById('resultImageBox');
+        if (!imageUrl) return;
+        box.innerHTML = `<img src="${imageUrl}" alt="YOLO 분석 결과 이미지">`;
+        (bboxes || []).forEach(b => {
+            const el = document.createElement('div');
+            el.className = 'bbox';
+            el.style.cssText = `left:${b.left}%; top:${b.top}%; width:${b.width}%; height:${b.height}%;`;
+            el.innerHTML = `<span class="bbox-label">${b.label}</span>`;
+            box.appendChild(el);
+        });
+    }
 
-    // 페이지네이션 데모용 이력 30건 생성 (최신순, id 내림차순)
-    const DEMO_HISTORY = (() => {
-        const pattern = ['warn', 'safe', 'safe', 'danger', 'safe', 'safe', 'warn', 'safe', 'safe', 'safe'];
-        const items = [];
-        const d = new Date('2026-07-05T00:00:00');
-        for (let i = 0; i < 30; i++) {
-            const status = pattern[i % pattern.length];
-            const t = DETAIL_TEMPLATES[status];
-            items.push({
-                id: 30 - i,
-                date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-                summary: t.summary,
-                status,
-                detail: t
-            });
-            d.setDate(d.getDate() - (4 + ((i * 3) % 6))); // 4~9일 간격으로 과거로
+    /** API 오류 공통 처리: 세션 만료면 로그인으로 */
+    function guardAuth(res) {
+        if (res.status === 401) {
+            location.href = '/';
+            throw new Error('unauthorized');
         }
-        return items;
-    })();
+        return res;
+    }
 
     function renderInsight(d) {
         const meta = STATUS_META[d.status] || STATUS_META.safe;
@@ -228,12 +190,16 @@
 
         const detail = document.getElementById('insightDetail');
         detail.innerHTML = '';
-        d.defects.forEach(def => {
-            const badge = document.createElement('span');
-            badge.className = 'badge badge-' + meta.cls;
-            badge.textContent = `${def.label} · ${(def.confidence * 100).toFixed(0)}%`;
-            detail.appendChild(badge);
-        });
+        if (!d.defects || !d.defects.length) {
+            detail.innerHTML = '<span class="badge badge-safe">결함 미탐지</span>';
+        } else {
+            d.defects.forEach(def => {
+                const badge = document.createElement('span');
+                badge.className = 'badge badge-' + meta.cls;
+                badge.textContent = `${def.label} · ${(def.confidence * 100).toFixed(0)}%`;
+                detail.appendChild(badge);
+            });
+        }
     }
 
     function renderWeather(w) {
@@ -312,39 +278,41 @@
         });
     }
 
-    // 연동 API: GET /api/diagnosis/history?status=...&cursor=...&limit=20
-    // 응답 형태: { items: [...], nextCursor: string | null }
+    // F-DSH-03: GET /api/diagnosis/history?status=...&cursor=...&limit=20
+    // 응답 형태: { items: [...], nextCursor: number | null }
     async function fetchHistoryPage(cursor, filters) {
-        try {
-            const params = new URLSearchParams();
-            params.set('limit', LIMIT);
-            if (cursor != null) params.set('cursor', cursor);
-            filters.forEach(s => params.append('status', STATUS_API_PARAM[s] || s));
-            const res = await fetch('/api/diagnosis/history?' + params);
-            if (res.ok) return await res.json();
-        } catch (err) { /* 백엔드 미구현 — 아래 데모 시뮬레이션으로 폴백 */ }
-
-        // TODO: 백엔드 구현 전 데모 — 상태 필터 + keyset(id < cursor) 시뮬레이션
-        let rows = DEMO_HISTORY;
-        if (filters.size) rows = rows.filter(i => filters.has(i.status));
-        if (cursor != null) rows = rows.filter(i => i.id < cursor);
-        const items = rows.slice(0, LIMIT);
-        return {
-            items,
-            nextCursor: rows.length > LIMIT ? items[items.length - 1].id : null
-        };
+        const params = new URLSearchParams();
+        params.set('limit', LIMIT);
+        if (cursor != null) params.set('cursor', cursor);
+        filters.forEach(s => params.append('status', STATUS_API_PARAM[s] || s));
+        const res = guardAuth(await fetch('/api/diagnosis/history?' + params));
+        if (!res.ok) throw new Error('이력을 불러오지 못했습니다.');
+        return await res.json();
     }
 
     async function loadNextHistoryPage() {
-        if (historyLoading || exhausted) return; // 로딩 중 클릭 무시 (disabled 남용 대신)
+        if (historyLoading || exhausted) return null; // 로딩 중 클릭 무시 (disabled 남용 대신)
         historyLoading = true;
         const seq = ++requestSeq;
         loadMoreBtn.hidden = false;
         loadMoreBtn.classList.add('loading');
         loadMoreBtn.textContent = '불러오는 중...';
 
-        const page = await fetchHistoryPage(nextCursor, activeFilters);
-        if (seq !== requestSeq) return; // 필터 변경으로 무효화된 응답은 버림
+        let page;
+        try {
+            page = await fetchHistoryPage(nextCursor, activeFilters);
+        } catch (err) {
+            if (err.message === 'unauthorized') return null;
+            historyLoading = false;
+            loadMoreBtn.classList.remove('loading');
+            loadMoreBtn.textContent = '이전 기록 더보기';
+            if (!firstPageLoaded) {
+                historyList.innerHTML = '<div class="history-empty">이력을 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</div>';
+                loadMoreBtn.hidden = true;
+            }
+            return null;
+        }
+        if (seq !== requestSeq) return null; // 필터 변경으로 무효화된 응답은 버림
 
         if (!firstPageLoaded) { historyList.innerHTML = ''; firstPageLoaded = true; }
         appendHistoryItems(page.items); // 기존 항목 유지, 하단에 append만 → 스크롤 위치 보존
@@ -366,6 +334,7 @@
                 : '<div class="history-empty">아직 진단 이력이 없습니다.<br>첫 타이어 검사를 시작해보세요!</div>';
             loadMoreBtn.hidden = true;
         }
+        return page.items;
     }
 
     // 필터 변경: 누적 리스트·커서 전부 무효화 후 처음부터 다시 적재
@@ -466,16 +435,16 @@
     }
 
     async function openHistoryModal(item) {
-        let detail = item.detail;
-
-        // 연동 API: GET /api/diagnosis/history/{id} (Spring → SQLite 상세 조회)
-        if (item.id != null) {
-            try {
-                const res = await fetch(`/api/diagnosis/history/${item.id}`);
-                if (res.ok) detail = await res.json();
-            } catch (err) { /* 백엔드 미구현 — 데모 detail 사용 */ }
+        // GET /api/diagnosis/history/{id} — 당시 이미지·결함·날씨·위치명·가이드 조회
+        let detail;
+        try {
+            const res = guardAuth(await fetch(`/api/diagnosis/history/${item.id}`));
+            if (!res.ok) throw new Error();
+            detail = await res.json();
+        } catch (err) {
+            if (err.message !== 'unauthorized') alert('진단 상세를 불러오지 못했습니다.');
+            return;
         }
-        if (!detail) return;
 
         renderModalContent(item, detail);
         modal.classList.add('show');
@@ -491,29 +460,54 @@
     modal.addEventListener('click', (e) => { if (e.target === modal) closeHistoryModal(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHistoryModal(); });
 
+    /** 진단 기록이 하나도 없을 때의 초기 안내 */
+    function renderEmptyInsight() {
+        document.getElementById('insightIcon').textContent = '🚗';
+        document.getElementById('insightTitle').textContent = '첫 타이어 진단을 시작해보세요';
+        document.getElementById('insightGuide').textContent =
+            '아직 진단 기록이 없습니다. 우측 상단의 "새로운 타이어 검사"를 눌러 타이어 사진을 올리면 AI가 결함을 분석하고 현재 날씨와 융합해 안전 가이드를 제공합니다.';
+    }
+
     async function loadDashboard() {
+        // 히스토리 첫 페이지 로드 (커서 기반)
+        const firstItems = await loadNextHistoryPage();
+
         // 직전 진단 결과가 세션에 있으면 우선 사용
         let diagnosis = null;
         try { diagnosis = JSON.parse(sessionStorage.getItem('lastDiagnosis')); } catch (e) {}
 
-        // 히스토리는 커서 기반으로 첫 페이지 로드
-        loadNextHistoryPage();
+        if (diagnosis) {
+            renderInsight(diagnosis);
+            renderResultImage(diagnosis.resultImageUrl, diagnosis.bboxes);
+            renderWeather(diagnosis.weather);
+            return;
+        }
 
-        // 연동 API: GET /api/weather (Spring → Open-Meteo)
+        // 직전 결과가 없으면 가장 최근 이력으로 대체 표시
+        if (firstItems && firstItems.length) {
+            try {
+                const res = guardAuth(await fetch(`/api/diagnosis/history/${firstItems[0].id}`));
+                if (res.ok) {
+                    const detail = await res.json();
+                    renderInsight({ status: firstItems[0].status, guide: detail.guide, defects: detail.defects });
+                    renderResultImage(detail.imageUrl, detail.bboxes);
+                    renderWeather(detail.weather);
+                    return;
+                }
+            } catch (e) { if (e.message === 'unauthorized') return; }
+        }
+
+        // 기록 없음 — 안내 문구 + 현재 위치 날씨만 표시 (F-ANA-02)
+        renderEmptyInsight();
         try {
-            const weatherRes = await fetch('/api/weather');
-            if (weatherRes.ok) {
-                renderWeather(await weatherRes.json());
-                renderInsight(diagnosis || DEMO_DIAGNOSIS);
-                return;
-            }
-        } catch (err) { /* 백엔드 미구현 — 데모 데이터로 대체 */ }
-
-        // TODO: 백엔드 구현 전 데모 렌더링 — API 준비 완료 후 제거
-        setTimeout(() => {
-            renderInsight(diagnosis || DEMO_DIAGNOSIS);
-            renderWeather(DEMO_DIAGNOSIS.weather);
-        }, 600);
+            let coords = null;
+            try { coords = JSON.parse(sessionStorage.getItem('lastCoords')); } catch (e) {}
+            const qs = coords ? `?lat=${coords.lat}&lon=${coords.lon}` : '';
+            const res = guardAuth(await fetch('/api/weather' + qs));
+            if (res.ok) renderWeather(await res.json());
+        } catch (e) {
+            document.getElementById('weatherDesc').textContent = '기상 정보를 불러오지 못했습니다';
+        }
     }
 
     loadDashboard();
