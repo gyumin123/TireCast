@@ -80,9 +80,16 @@
                 </svg>
                 진단 히스토리
             </h2>
+            <div class="filter-chips" id="filterChips">
+                <button type="button" class="chip active" data-filter="all">전체</button>
+                <button type="button" class="chip chip-safe" data-filter="safe">안전</button>
+                <button type="button" class="chip chip-warn" data-filter="warn">경고</button>
+                <button type="button" class="chip chip-danger" data-filter="danger">위험</button>
+            </div>
             <div class="history-list" id="historyList">
                 <div class="history-empty">진단 이력을 불러오는 중...</div>
             </div>
+            <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreBtn" hidden>이전 기록 더보기</button>
         </section>
     </div>
 </main>
@@ -157,51 +164,56 @@
         }
     };
 
-    // 데모 진단 이력 (GET /api/diagnosis/history 응답 형태 가정 — detail은 GET /api/diagnosis/history/{id})
-    const DEMO_HISTORY = [
-        {
-            id: 4, date: '2026-07-05', summary: '경고 — 측면 미세 크랙 1건', status: 'warn',
-            detail: {
-                defects: [{ label: '측면 크랙 (cut)', confidence: 0.58 }],
-                bboxes: [{ left: 58, top: 40, width: 20, height: 18, label: 'cut 0.58' }],
-                guide: '측면에 미세 크랙이 발견되었습니다. 당장 위험하지는 않지만 진행 상태를 주기적으로 확인하고, 고속 주행 전 점검을 권장합니다.',
-                weather: { location: '대구광역시 달서구', description: '흐림', icon: '☁️', precipitation: 0.4, temperature: 27.1 }
-            }
+    // 데모 진단 이력 상세 템플릿 (상태별) — detail은 GET /api/diagnosis/history/{id} 응답 형태 가정
+    const DETAIL_TEMPLATES = {
+        safe: {
+            summary: '안전 — 결함 미탐지',
+            defects: [],
+            bboxes: [],
+            guide: '탐지된 결함이 없습니다. 타이어 상태가 양호하며 당시 기상 조건에서 안전하게 주행할 수 있는 상태였습니다.',
+            weather: { location: '대구광역시 달서구', description: '맑음', icon: '☀️', precipitation: 0, temperature: 26.4 }
         },
-        {
-            id: 3, date: '2026-06-21', summary: '안전 — 결함 미탐지', status: 'safe',
-            detail: {
-                defects: [],
-                bboxes: [],
-                guide: '탐지된 결함이 없습니다. 타이어 상태가 양호하며 현재 기상 조건에서 안전하게 주행할 수 있습니다.',
-                weather: { location: '대구광역시 달서구', description: '맑음', icon: '☀️', precipitation: 0, temperature: 29.3 }
-            }
+        warn: {
+            summary: '경고 — 측면 미세 크랙 1건',
+            defects: [{ label: '측면 크랙 (cut)', confidence: 0.58 }],
+            bboxes: [{ left: 58, top: 40, width: 20, height: 18, label: 'cut 0.58' }],
+            guide: '측면에 미세 크랙이 발견되었습니다. 당장 위험하지는 않지만 진행 상태를 주기적으로 확인하고, 고속 주행 전 점검을 권장합니다.',
+            weather: { location: '대구광역시 달서구', description: '흐림', icon: '☁️', precipitation: 0.4, temperature: 27.1 }
         },
-        {
-            id: 2, date: '2026-06-02', summary: '안전 — 결함 미탐지', status: 'safe',
-            detail: {
-                defects: [],
-                bboxes: [],
-                guide: '탐지된 결함이 없습니다. 트레드 상태가 양호합니다. 다음 정기 점검까지 안심하고 주행하세요.',
-                weather: { location: '대구광역시 수성구', description: '구름 조금', icon: '🌤️', precipitation: 0, temperature: 24.8 }
-            }
-        },
-        {
-            id: 1, date: '2026-05-18', summary: '위험 — 비드 손상 탐지', status: 'danger',
-            detail: {
-                defects: [
-                    { label: '비드 손상 (bead_damage)', confidence: 0.81 },
-                    { label: '부풀음 (CBU)', confidence: 0.66 }
-                ],
-                bboxes: [
-                    { left: 20, top: 55, width: 24, height: 22, label: 'bead_damage 0.81' },
-                    { left: 60, top: 22, width: 18, height: 20, label: 'CBU 0.66' }
-                ],
-                guide: '비드 손상과 부풀음이 동시에 탐지되었습니다. 주행 중 파열 위험이 있어 즉시 정비소 방문이 필요했던 상태입니다.',
-                weather: { location: '대구광역시 달서구', description: '맑음', icon: '☀️', precipitation: 0, temperature: 26.0 }
-            }
+        danger: {
+            summary: '위험 — 비드 손상·부풀음 탐지',
+            defects: [
+                { label: '비드 손상 (bead_damage)', confidence: 0.81 },
+                { label: '부풀음 (CBU)', confidence: 0.66 }
+            ],
+            bboxes: [
+                { left: 20, top: 55, width: 24, height: 22, label: 'bead_damage 0.81' },
+                { left: 60, top: 22, width: 18, height: 20, label: 'CBU 0.66' }
+            ],
+            guide: '비드 손상과 부풀음이 동시에 탐지되었습니다. 주행 중 파열 위험이 있어 즉시 정비소 방문이 필요했던 상태입니다.',
+            weather: { location: '대구광역시 달서구', description: '맑음', icon: '☀️', precipitation: 0, temperature: 26.0 }
         }
-    ];
+    };
+
+    // 페이지네이션 데모용 이력 30건 생성 (최신순, id 내림차순)
+    const DEMO_HISTORY = (() => {
+        const pattern = ['warn', 'safe', 'safe', 'danger', 'safe', 'safe', 'warn', 'safe', 'safe', 'safe'];
+        const items = [];
+        const d = new Date('2026-07-05T00:00:00');
+        for (let i = 0; i < 30; i++) {
+            const status = pattern[i % pattern.length];
+            const t = DETAIL_TEMPLATES[status];
+            items.push({
+                id: 30 - i,
+                date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+                summary: t.summary,
+                status,
+                detail: t
+            });
+            d.setDate(d.getDate() - (4 + ((i * 3) % 6))); // 4~9일 간격으로 과거로
+        }
+        return items;
+    })();
 
     function renderInsight(d) {
         const meta = STATUS_META[d.status] || STATUS_META.safe;
@@ -232,16 +244,62 @@
             `강수량 ${w.precipitation}mm<br>기온 ${w.temperature}°C`;
     }
 
-    function renderHistory(items) {
-        const list = document.getElementById('historyList');
-        list.innerHTML = '';
-        if (!items.length) {
-            list.innerHTML = '<div class="history-empty">아직 진단 이력이 없습니다.<br>첫 타이어 검사를 시작해보세요!</div>';
-            return;
-        }
-        items.forEach(item => {
+    /* =========================================================
+       히스토리 — 월별 그룹핑 + 상태 필터 + 누적형 더보기(커서 기반)
+       페이지 번호 상태 없음: nextCursor 하나만 유지, 리스트는 append만
+       ========================================================= */
+    const LIMIT = 20;
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    const historyList = document.getElementById('historyList');
+    const filterChipsEl = document.getElementById('filterChips');
+
+    let nextCursor = null;
+    let exhausted = false;
+    let historyLoading = false;
+    let firstPageLoaded = false;
+    let requestSeq = 0;              // 필터 변경 시 진행 중이던 응답 폐기용
+    const activeFilters = new Set(); // 비어 있으면 '전체'
+
+    // 서버 쿼리 파라미터 표기 매핑 (내부 warn → API warning)
+    const STATUS_API_PARAM = { safe: 'safe', warn: 'warning', danger: 'danger' };
+
+    function monthKeyOf(dateStr) { return dateStr.slice(0, 7); }
+    function monthLabelOf(key) {
+        const [y, m] = key.split('-');
+        return `${y}년 ${Number(m)}월`;
+    }
+
+    function createMonthSection(key, expanded) {
+        const sec = document.createElement('section');
+        sec.className = 'month-section' + (expanded ? '' : ' collapsed');
+        sec.dataset.month = key;
+        sec.innerHTML = `
+            <button type="button" class="month-header" aria-expanded="${expanded}">
+                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <span class="month-title">${monthLabelOf(key)}</span>
+                <span class="month-count">0건</span>
+            </button>
+            <div class="month-items"><div class="month-items-inner"></div></div>`;
+        sec.querySelector('.month-header').addEventListener('click', () => {
+            const collapsed = sec.classList.toggle('collapsed');
+            sec.querySelector('.month-header').setAttribute('aria-expanded', String(!collapsed));
+        });
+        historyList.appendChild(sec);
+        return sec;
+    }
+
+    function appendHistoryItems(items) {
+        items.forEach((item, idx) => {
+            const key = monthKeyOf(item.date);
+            let sec = historyList.lastElementChild;
+            if (!sec || sec.dataset.month !== key) {
+                // 최초 생성되는 달(가장 최근)만 펼침, 이후 과거 달은 접힌 채 개수만 표시
+                sec = createMonthSection(key, historyList.children.length === 0);
+            }
+            const inner = sec.querySelector('.month-items-inner');
             const el = document.createElement('div');
-            el.className = 'history-item';
+            el.className = 'history-item fade-up';
+            el.style.animationDelay = (idx * 0.04) + 's';
             el.innerHTML = `
                 <span class="h-date">${item.date}</span>
                 <span class="h-summary">${item.summary}</span>
@@ -249,9 +307,99 @@
                     item.status === 'safe' ? '안전' : item.status === 'warn' ? '경고' : '위험'
                 }</span>`;
             el.addEventListener('click', () => openHistoryModal(item));
-            list.appendChild(el);
+            inner.appendChild(el);
+            sec.querySelector('.month-count').textContent = inner.children.length + '건';
         });
     }
+
+    // 연동 API: GET /api/diagnosis/history?status=...&cursor=...&limit=20
+    // 응답 형태: { items: [...], nextCursor: string | null }
+    async function fetchHistoryPage(cursor, filters) {
+        try {
+            const params = new URLSearchParams();
+            params.set('limit', LIMIT);
+            if (cursor != null) params.set('cursor', cursor);
+            filters.forEach(s => params.append('status', STATUS_API_PARAM[s] || s));
+            const res = await fetch('/api/diagnosis/history?' + params);
+            if (res.ok) return await res.json();
+        } catch (err) { /* 백엔드 미구현 — 아래 데모 시뮬레이션으로 폴백 */ }
+
+        // TODO: 백엔드 구현 전 데모 — 상태 필터 + keyset(id < cursor) 시뮬레이션
+        let rows = DEMO_HISTORY;
+        if (filters.size) rows = rows.filter(i => filters.has(i.status));
+        if (cursor != null) rows = rows.filter(i => i.id < cursor);
+        const items = rows.slice(0, LIMIT);
+        return {
+            items,
+            nextCursor: rows.length > LIMIT ? items[items.length - 1].id : null
+        };
+    }
+
+    async function loadNextHistoryPage() {
+        if (historyLoading || exhausted) return; // 로딩 중 클릭 무시 (disabled 남용 대신)
+        historyLoading = true;
+        const seq = ++requestSeq;
+        loadMoreBtn.hidden = false;
+        loadMoreBtn.classList.add('loading');
+        loadMoreBtn.textContent = '불러오는 중...';
+
+        const page = await fetchHistoryPage(nextCursor, activeFilters);
+        if (seq !== requestSeq) return; // 필터 변경으로 무효화된 응답은 버림
+
+        if (!firstPageLoaded) { historyList.innerHTML = ''; firstPageLoaded = true; }
+        appendHistoryItems(page.items); // 기존 항목 유지, 하단에 append만 → 스크롤 위치 보존
+        nextCursor = page.nextCursor;
+        historyLoading = false;
+        loadMoreBtn.classList.remove('loading');
+
+        if (nextCursor == null) {
+            exhausted = true;
+            loadMoreBtn.textContent = '마지막 기록입니다';
+            loadMoreBtn.classList.add('exhausted');
+        } else {
+            loadMoreBtn.textContent = '이전 기록 더보기';
+        }
+
+        if (!historyList.children.length) {
+            historyList.innerHTML = activeFilters.size
+                ? '<div class="history-empty">선택한 조건에 해당하는 기록이 없습니다.</div>'
+                : '<div class="history-empty">아직 진단 이력이 없습니다.<br>첫 타이어 검사를 시작해보세요!</div>';
+            loadMoreBtn.hidden = true;
+        }
+    }
+
+    // 필터 변경: 누적 리스트·커서 전부 무효화 후 처음부터 다시 적재
+    function resetAndReload() {
+        requestSeq++;
+        historyLoading = false;
+        nextCursor = null;
+        exhausted = false;
+        firstPageLoaded = false;
+        historyList.innerHTML = '<div class="history-empty">진단 이력을 불러오는 중...</div>';
+        loadMoreBtn.hidden = true;
+        loadMoreBtn.classList.remove('exhausted', 'loading');
+        loadNextHistoryPage();
+    }
+
+    filterChipsEl.addEventListener('click', (e) => {
+        const chip = e.target.closest('.chip');
+        if (!chip) return;
+        const f = chip.dataset.filter;
+        if (f === 'all') {
+            activeFilters.clear();
+        } else if (activeFilters.has(f)) {
+            activeFilters.delete(f);
+        } else {
+            activeFilters.add(f);
+        }
+        filterChipsEl.querySelectorAll('.chip').forEach(c => {
+            const cf = c.dataset.filter;
+            c.classList.toggle('active', cf === 'all' ? activeFilters.size === 0 : activeFilters.has(cf));
+        });
+        resetAndReload();
+    });
+
+    loadMoreBtn.addEventListener('click', loadNextHistoryPage);
 
     /* =========================================================
        진단 상세 모달
@@ -348,18 +496,14 @@
         let diagnosis = null;
         try { diagnosis = JSON.parse(sessionStorage.getItem('lastDiagnosis')); } catch (e) {}
 
+        // 히스토리는 커서 기반으로 첫 페이지 로드
+        loadNextHistoryPage();
+
         // 연동 API: GET /api/weather (Spring → Open-Meteo)
-        // 연동 API: GET /api/diagnosis/history (Spring → SQLite)
         try {
-            const [weatherRes, historyRes] = await Promise.all([
-                fetch('/api/weather'),
-                fetch('/api/diagnosis/history')
-            ]);
-            if (weatherRes.ok && historyRes.ok) {
-                const weather = await weatherRes.json();
-                const history = await historyRes.json();
-                renderWeather(weather);
-                renderHistory(history);
+            const weatherRes = await fetch('/api/weather');
+            if (weatherRes.ok) {
+                renderWeather(await weatherRes.json());
                 renderInsight(diagnosis || DEMO_DIAGNOSIS);
                 return;
             }
@@ -367,9 +511,8 @@
 
         // TODO: 백엔드 구현 전 데모 렌더링 — API 준비 완료 후 제거
         setTimeout(() => {
-            renderInsight(DEMO_DIAGNOSIS);
+            renderInsight(diagnosis || DEMO_DIAGNOSIS);
             renderWeather(DEMO_DIAGNOSIS.weather);
-            renderHistory(DEMO_HISTORY);
         }, 600);
     }
 

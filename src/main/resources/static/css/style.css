@@ -28,7 +28,8 @@ body {
   background: linear-gradient(135deg, #0b1220 0%, #101c33 45%, #0d1a2e 100%);
   color: var(--text-main);
   min-height: 100vh;
-  overflow-x: hidden;
+  /* hidden 대신 clip: 스크롤 컨테이너를 만들지 않아 position: sticky가 정상 동작 */
+  overflow-x: clip;
 }
 
 /* ---------- 배경 컬러 블롭 (블러 효과 강조용) ---------- */
@@ -190,6 +191,7 @@ body {
   padding: 44px 36px;
   display: flex; flex-direction: column; gap: 22px;
 }
+/* 의도된 음수 마진: 로고와 부제목 사이 간격 조정용 텍스트 스페이싱 (카드 경계 침범 없음) */
 .auth-card .auth-sub { text-align: center; color: var(--text-sub); font-size: 0.9rem; margin-top: -8px; }
 .auth-card form { display: flex; flex-direction: column; gap: 16px; }
 .auth-foot { text-align: center; font-size: 0.88rem; color: var(--text-sub); }
@@ -339,7 +341,10 @@ body {
 .insight-detail { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* 히스토리 */
-.history-list { display: flex; flex-direction: column; gap: 10px; max-height: 340px;  padding-right: 4px; }
+.history-list { display: flex; flex-direction: column; gap: 10px; max-height: 340px;  padding-right: 4px;  }
+#historyList {
+  overflow-y: auto !important;
+}
 .history-list::-webkit-scrollbar { width: 5px; }
 .history-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
 .history-item {
@@ -349,11 +354,80 @@ body {
   border: 1px solid var(--glass-border);
   cursor: pointer;
   transition: transform var(--transition), background var(--transition), border-color var(--transition);
+  flex-shrink: 0; /* flex container 내부에서 찌그러지지 않고 스크롤되도록 설정 */
 }
 .history-item:hover { transform: translateX(5px); background: rgba(255,255,255,0.09); border-color: rgba(56,189,248,0.35); }
 .history-item .h-date { font-size: 0.8rem; color: var(--text-sub); min-width: 86px; }
 .history-item .h-summary { font-size: 0.88rem; font-weight: 600; flex: 1; }
 .history-empty { text-align: center; color: #64748b; font-size: 0.88rem; padding: 26px 0; }
+
+.load-more-btn { width: 100%; padding: 12px; font-size: 0.9rem; }
+.load-more-btn[hidden] { display: none; }
+.load-more-btn.loading { pointer-events: none; }   /* disabled 대신 클릭 무시 */
+.load-more-btn.exhausted {
+  pointer-events: none;
+  opacity: 0.45;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ---------- 상태 필터 칩 ---------- */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 7px 14px; border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-sub);
+  font-size: 0.82rem; font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--transition), background var(--transition),
+              border-color var(--transition), color var(--transition);
+}
+.chip:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.1); }
+.chip:active { transform: scale(0.96); }
+.chip.active { color: var(--accent); background: rgba(56, 189, 248, 0.14); border-color: rgba(56, 189, 248, 0.45); }
+.chip-safe.active   { color: var(--safe);   background: rgba(52, 211, 153, 0.14); border-color: rgba(52, 211, 153, 0.45); }
+.chip-warn.active   { color: var(--warn);   background: rgba(251, 191, 36, 0.14); border-color: rgba(251, 191, 36, 0.45); }
+.chip-danger.active { color: var(--danger); background: rgba(248, 113, 113, 0.14); border-color: rgba(248, 113, 113, 0.45); }
+
+/* ---------- 월별 그룹 섹션 (아코디언) ---------- */
+.month-section { display: flex; flex-direction: column; gap: 10px; }
+.month-header {
+  /* 리스트 스크롤 시 상단 고정 — 조상에 overflow: hidden 금지 (body는 clip 사용) */
+   top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-main);
+  font-size: 0.88rem; font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.month-header:hover { border-color: rgba(56, 189, 248, 0.35); background: rgba(20, 30, 52, 0.92); }
+.month-header .chevron { width: 16px; height: 16px; color: var(--text-sub); flex-shrink: 0; transition: transform 0.3s ease; }
+.month-section.collapsed .chevron { transform: rotate(-90deg); }
+.month-header .month-count { margin-left: auto; font-size: 0.76rem; color: var(--text-sub); font-weight: 600; }
+
+.month-items {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.35s ease;
+}
+.month-section.collapsed .month-items { grid-template-rows: 0fr; }
+.month-items-inner {
+  min-height: 0; overflow: hidden;   /* 아코디언 접힘용 — sticky 헤더는 바깥에 있어 영향 없음 */
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+/* ---------- 카드 경계 컨테인 가드레일 ---------- */
+.dash-grid > * { min-width: 0; }        /* grid 자식 블로우아웃 방지 */
+.insight-detail { min-width: 0; }        /* flex-wrap은 위에서 이미 적용 */
+.badge { max-width: 100%; }              /* 배지 텍스트가 길어져도 카드 폭 안에서 처리 */
 
 /* ---------- 진단 상세 모달 ---------- */
 .modal-overlay {
