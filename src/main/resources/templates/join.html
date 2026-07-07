@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TireCast — 회원가입</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<!-- SCR-JOIN-001 : 회원가입 화면 -->
+<div class="bg-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+</div>
+
+<main class="auth-wrap">
+    <section class="glass auth-card fade-up">
+        <div class="logo">
+            <svg class="logo-mark" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="20" stroke="#38bdf8" stroke-width="5"/>
+                <circle cx="24" cy="24" r="9" stroke="#f1f5f9" stroke-width="3" stroke-dasharray="4 4"/>
+                <path d="M10 14 Q16 8 24 8" stroke="#34d399" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+            <span class="logo-text">Tire<em>Cast</em></span>
+        </div>
+        <p class="auth-sub">계정을 만들고 진단 이력을 관리하세요</p>
+
+        <div id="formAlert" class="form-alert"></div>
+
+        <form id="joinForm" novalidate>
+            <div class="field">
+                <label for="name">이름 (닉네임)</label>
+                <input type="text" id="name" name="name" placeholder="홍길동" autocomplete="nickname" required>
+            </div>
+            <div class="field">
+                <label for="email">이메일</label>
+                <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required>
+            </div>
+            <div class="field">
+                <label for="password">비밀번호</label>
+                <input type="password" id="password" name="password" placeholder="8자 이상 입력" autocomplete="new-password" required>
+            </div>
+            <div class="field">
+                <label for="passwordConfirm">비밀번호 확인</label>
+                <input type="password" id="passwordConfirm" name="passwordConfirm" placeholder="비밀번호 재입력" autocomplete="new-password" required>
+                <span id="pwMismatch" class="field-error"></span>
+            </div>
+            <button type="submit" id="joinBtn" class="btn btn-primary">가입 완료</button>
+        </form>
+
+        <p class="auth-foot"><a class="link" th:href="@{/}">로그인으로 돌아가기</a></p>
+    </section>
+</main>
+
+<script>
+    const form = document.getElementById('joinForm');
+    const alertBox = document.getElementById('formAlert');
+    const joinBtn = document.getElementById('joinBtn');
+    const pwInput = document.getElementById('password');
+    const pwConfirmInput = document.getElementById('passwordConfirm');
+    const pwMismatch = document.getElementById('pwMismatch');
+
+    function showAlert(msg, type) {
+        alertBox.textContent = msg;
+        alertBox.className = 'form-alert show ' + type;
+    }
+
+    // 비밀번호 확인 실시간 검증
+    pwConfirmInput.addEventListener('input', () => {
+        pwMismatch.textContent =
+            pwConfirmInput.value && pwInput.value !== pwConfirmInput.value
+                ? '비밀번호가 일치하지 않습니다.' : '';
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        alertBox.className = 'form-alert';
+
+        const name = document.getElementById('name').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const password = pwInput.value;
+        const passwordConfirm = pwConfirmInput.value;
+
+        if (!name || !email || !password || !passwordConfirm) {
+            showAlert('모든 항목을 입력해주세요.', 'error');
+            return;
+        }
+        if (password.length < 8) {
+            showAlert('비밀번호는 8자 이상이어야 합니다.', 'error');
+            return;
+        }
+        if (password !== passwordConfirm) {
+            showAlert('비밀번호가 일치하지 않습니다.', 'error');
+            return;
+        }
+
+        joinBtn.disabled = true;
+        joinBtn.textContent = '가입 처리 중...';
+
+        try {
+            // 연동 API: POST /api/auth/register (Spring Boot → SQLite 저장)
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, password })
+            });
+
+            if (res.status === 409) {
+                showAlert('이미 사용 중인 이메일입니다.', 'error');
+                joinBtn.disabled = false;
+                joinBtn.textContent = '가입 완료';
+                return;
+            }
+            // TODO: 백엔드 구현 전에는 성공 흐름으로 처리 — API 준비 완료 후 res.ok 검사로 교체
+        } catch (err) {
+            // TODO: 백엔드 구현 전 데모 — 네트워크 오류 무시하고 성공 흐름 진행
+        }
+
+        // 가입 성공 알림 후 로그인 화면으로 자동 리다이렉트
+        showAlert('가입이 완료되었습니다! 로그인 화면으로 이동합니다.', 'success');
+        setTimeout(() => { location.href = '/'; }, 1500);
+    });
+</script>
+</body>
+</html>

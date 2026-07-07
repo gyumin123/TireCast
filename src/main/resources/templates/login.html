@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TireCast — 로그인</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+<!-- SCR-LOG-001 : 로그인 화면 -->
+<div class="bg-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+</div>
+
+<main class="auth-wrap">
+    <section class="glass auth-card fade-up">
+        <div class="logo">
+            <svg class="logo-mark" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="20" stroke="#38bdf8" stroke-width="5"/>
+                <circle cx="24" cy="24" r="9" stroke="#f1f5f9" stroke-width="3" stroke-dasharray="4 4"/>
+                <path d="M10 14 Q16 8 24 8" stroke="#34d399" stroke-width="3" stroke-linecap="round"/>
+            </svg>
+            <span class="logo-text">Tire<em>Cast</em></span>
+        </div>
+        <p class="auth-sub">AI 타이어 진단과 실시간 날씨로<br>오늘의 주행 안전을 확인하세요</p>
+
+        <div id="formAlert" class="form-alert error"></div>
+
+        <form id="loginForm" novalidate>
+            <div class="field">
+                <label for="email">이메일</label>
+                <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required>
+            </div>
+            <div class="field">
+                <label for="password">비밀번호</label>
+                <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+            </div>
+            <button type="submit" id="loginBtn" class="btn btn-primary">로그인</button>
+        </form>
+
+        <p class="auth-foot">계정이 없으신가요? <a class="link" th:href="@{/join}">회원가입하기</a></p>
+    </section>
+</main>
+
+<script>
+    const form = document.getElementById('loginForm');
+    const alertBox = document.getElementById('formAlert');
+    const loginBtn = document.getElementById('loginBtn');
+
+    function showError(msg) {
+        alertBox.textContent = msg;
+        alertBox.classList.add('show');
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        alertBox.classList.remove('show');
+
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        if (!email || !password) {
+            showError('이메일과 비밀번호를 모두 입력해주세요.');
+            return;
+        }
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = '로그인 중...';
+
+        try {
+            // 연동 API: POST /api/auth/login (Spring Boot 인증 처리)
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            if (res.ok) {
+                location.href = '/mobile';
+            } else if (res.status === 401 || res.status === 400) {
+                showError('이메일 또는 비밀번호가 올바르지 않습니다.');
+            } else {
+                // TODO: 백엔드 구현 전 데모 — API 준비 완료 후 이 분기는 오류 처리로 교체
+                location.href = '/mobile';
+            }
+        } catch (err) {
+            // TODO: 백엔드 구현 전 데모 — API 준비 완료 후 네트워크 오류 안내로 교체
+            location.href = '/mobile';
+        } finally {
+            loginBtn.disabled = false;
+            loginBtn.textContent = '로그인';
+        }
+    });
+</script>
+</body>
+</html>
